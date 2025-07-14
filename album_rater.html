@@ -242,15 +242,58 @@
       document.getElementById('topAlbum').innerText = top;
     }
 
-    async function searchDeezer() {
-      const query = document.getElementById('searchInput').value;
-      if (!query) return;
-      const response = await fetch(\`https://deezerdevs-deezer.p.rapidapi.com/search?q=\${encodeURIComponent(query)}\`, {
-        method: 'GET',
-        headers: {
-          'X-RapidAPI-Key': 'demo',
-          'X-RapidAPI-Host': 'deezerdevs-deezer.p.rapidapi.com'
-        }
+    async function showSuggestions() {
+  const query = document.getElementById('searchInput').value;
+  const suggestionsBox = document.getElementById('suggestions');
+  if (!query) return suggestionsBox.innerHTML = "";
+
+  const response = await fetch(`https://deezerdevs-deezer.p.rapidapi.com/search?q=${encodeURIComponent(query)}`, {
+    method: 'GET',
+    headers: {
+      'X-RapidAPI-Key': 'demo',  // Replace with your actual key
+      'X-RapidAPI-Host': 'deezerdevs-deezer.p.rapidapi.com'
+    }
+  });
+  const data = await response.json();
+
+  suggestionsBox.innerHTML = "";
+  const seenArtists = new Set();
+  const seenAlbums = new Set();
+
+  data.data.slice(0, 20).forEach(item => {
+    const artist = item.artist.name;
+    const album = item.album.title;
+
+    // Suggest artist names
+    if (!seenArtists.has(artist)) {
+      seenArtists.add(artist);
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.innerText = artist;
+      div.onclick = () => {
+        document.getElementById('searchInput').value = artist;
+        suggestionsBox.innerHTML = "";
+        searchDeezer();
+      };
+      suggestionsBox.appendChild(div);
+    }
+
+    // Suggest album titles
+    const text = `${album} – ${artist}`;
+    if (!seenAlbums.has(text)) {
+      seenAlbums.add(text);
+      const div = document.createElement('div');
+      div.className = 'suggestion-item';
+      div.innerText = text;
+      div.onclick = () => {
+        document.getElementById('searchInput').value = text;
+        suggestionsBox.innerHTML = "";
+        searchDeezer();
+      };
+      suggestionsBox.appendChild(div);
+    }
+  });
+}
       });
       const data = await response.json();
       const albumSelect = document.getElementById('albumSelect');
