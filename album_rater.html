@@ -1,0 +1,320 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Album Rating App with Deezer</title>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600&display=swap" rel="stylesheet">
+  <style>
+    body {
+      font-family: 'Inter', sans-serif;
+      background-color: #f9fafb;
+      margin: 0;
+      padding: 2rem;
+      display: flex;
+      justify-content: center;
+    }
+    .wrapper {
+      display: flex;
+      gap: 2rem;
+      width: 100%;
+      max-width: 1400px;
+    }
+    .container, .sidebar, .profile {
+      background-color: #ffffff;
+      border-radius: 1rem;
+      padding: 2rem;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+    }
+    .container { width: 45%; }
+    .sidebar { width: 30%; max-height: 80vh; overflow-y: auto; }
+    .profile { width: 25%; }
+    h1, h2, h3 { color: #111827; }
+    label { font-weight: 600; color: #374151; }
+    input[type="text"], input[type="number"] {
+      padding: 0.5rem;
+      margin: 0.5rem 0;
+      width: calc(40% - 0.5rem);
+      border: 1px solid #d1d5db;
+      border-radius: 0.5rem;
+    }
+    .autocomplete { position: relative; }
+    .suggestions {
+      position: absolute;
+      top: 100%;
+      left: 0;
+      right: 0;
+      background-color: white;
+      border: 1px solid #d1d5db;
+      border-radius: 0.5rem;
+      z-index: 10;
+      max-height: 200px;
+      overflow-y: auto;
+    }
+    .suggestion-item {
+      padding: 0.5rem;
+      cursor: pointer;
+    }
+    .suggestion-item:hover { background-color: #f3f4f6; }
+    .track {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 1rem;
+    }
+    .track label {
+      font-size: 0.9rem;
+      color: #6b7280;
+    }
+    .rating-label {
+      min-width: 120px;
+      font-size: 0.85rem;
+      color: #4b5563;
+    }
+    button {
+      background-color: #3b82f6;
+      color: white;
+      border: none;
+      padding: 0.75rem 1.5rem;
+      border-radius: 0.5rem;
+      cursor: pointer;
+      margin-top: 1rem;
+      margin-right: 0.5rem;
+    }
+    button:hover { background-color: #2563eb; }
+    #output {
+      text-align: center;
+      margin-top: 2rem;
+      font-size: 1.25rem;
+      color: #10b981;
+    }
+    ol { padding-left: 1.5rem; }
+    .album-entry {
+      margin-bottom: 0.5rem;
+      font-size: 0.95rem;
+      color: #374151;
+    }
+    .album-entry span {
+      font-weight: 600;
+      color: #111827;
+    }
+    select {
+      padding: 0.5rem;
+      margin-top: 0.5rem;
+      border-radius: 0.5rem;
+      width: 100%;
+    }
+    .rating-scale {
+      font-size: 0.85rem;
+      color: #6b7280;
+      margin-top: 1rem;
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrapper">
+    <div class="container">
+      <h1>Rate an Album</h1>
+      <div class="autocomplete">
+        <label>Search Album or Artist:
+          <input type="text" id="searchInput" oninput="debouncedSuggestions()">
+          <div class="suggestions" id="suggestions"></div>
+        </label>
+        <button onclick="searchDeezer()">Search</button>
+      </div><br>
+      <select id="albumSelect" onchange="loadAlbumTracks()">
+        <option value="">Select an album</option>
+      </select><br><br>
+      <label>Album Name: <input type="text" id="albumName"></label><br><br>
+      <div id="tracks"><h3>Tracks</h3></div>
+      <button onclick="addTrack()">Add Another Track</button>
+      <button onclick="calculateRating()">Calculate Album Rating</button>
+      <div class="rating-scale">
+        <strong>Rating Guide:</strong><br>
+        90–100: Masterpiece<br>
+        80–89: Excellent<br>
+        70–79: Great<br>
+        60–69: Good<br>
+        50–59: Decent<br>
+        40–49: Mediocre<br>
+        30–39: Weak<br>
+        20–29: Poor<br>
+        10–19: Bad<br>
+        0–9: Unlistenable
+      </div>
+      <h2 id="output"></h2>
+    </div>
+    <div class="sidebar">
+      <h2>Top 25 Rated Albums</h2>
+      <ol id="topAlbums"></ol>
+    </div>
+    <div class="profile">
+      <h2>User Profile</h2>
+      <p><strong>Albums Rated:</strong> <span id="albumsRated">0</span></p>
+      <p><strong>Average Rating:</strong> <span id="averageRating">0</span></p>
+      <p><strong>Top Rated Album:</strong> <span id="topAlbum">N/A</span></p>
+    </div>
+  </div>
+  <script>
+    const topAlbums = [];
+    let debounceTimeout;
+
+    function addTrack(name = "", rating = "", isSkit = false) {
+      const container = document.getElementById('tracks');
+      const div = document.createElement('div');
+      div.className = 'track';
+      const id = Math.random().toString(36).substr(2, 9);
+      div.innerHTML = \`
+        <input type="text" placeholder="Track Name" value="\${name}">
+        <input type="number" placeholder="Rating (0–100)" min="0" max="100" value="\${rating}" oninput="updateRatingLabel(this, '\${id}')">
+        <span id="\${id}" class="rating-label"></span>
+        <label><input type="checkbox" class="skit-toggle" \${isSkit ? 'checked' : ''}> Skit</label>
+      \`;
+      container.appendChild(div);
+      updateRatingLabel(div.querySelector('input[type="number"]'), id);
+    }
+
+    function updateRatingLabel(input, labelId) {
+      const value = parseInt(input.value);
+      const label = document.getElementById(labelId);
+      if (isNaN(value)) {
+        label.innerText = "";
+        return;
+      }
+      let desc = "";
+      if (value >= 90) desc = "Masterpiece";
+      else if (value >= 80) desc = "Excellent";
+      else if (value >= 70) desc = "Great";
+      else if (value >= 60) desc = "Good";
+      else if (value >= 50) desc = "Decent";
+      else if (value >= 40) desc = "Mediocre";
+      else if (value >= 30) desc = "Weak";
+      else if (value >= 20) desc = "Poor";
+      else if (value >= 10) desc = "Bad";
+      else desc = "Unlistenable";
+      label.innerText = desc;
+    }
+
+    function calculateRating() {
+      const trackElements = document.querySelectorAll('.track');
+      let sum = 0;
+      let count = 0;
+
+      trackElements.forEach(track => {
+        const rating = parseFloat(track.children[1].value);
+        const isSkit = track.querySelector('.skit-toggle').checked;
+        if (!isSkit && !isNaN(rating)) {
+          sum += rating;
+          count += 1;
+        }
+      });
+
+      const albumName = document.getElementById('albumName').value || "Unnamed Album";
+      const avg = count ? (sum / count).toFixed(2) : 0;
+      document.getElementById('output').innerText = \`Rating for "\${albumName}": \${avg}/100\`;
+
+      if (albumName.trim() && avg > 0) {
+        topAlbums.push({ name: albumName, rating: parseFloat(avg) });
+        topAlbums.sort((a, b) => b.rating - a.rating);
+        if (topAlbums.length > 25) topAlbums.pop();
+        renderTopAlbums();
+        updateProfileStats();
+      }
+    }
+
+    function renderTopAlbums() {
+      const list = document.getElementById('topAlbums');
+      list.innerHTML = "";
+      topAlbums.forEach((album) => {
+        const li = document.createElement('li');
+        li.className = 'album-entry';
+        li.innerHTML = \`<span>\${album.name}</span> – \${album.rating}/100\`;
+        list.appendChild(li);
+      });
+    }
+
+    function updateProfileStats() {
+      const rated = topAlbums.length;
+      const avg = rated ? (topAlbums.reduce((acc, curr) => acc + curr.rating, 0) / rated).toFixed(2) : 0;
+      const top = rated ? topAlbums[0].name : "N/A";
+      document.getElementById('albumsRated').innerText = rated;
+      document.getElementById('averageRating').innerText = avg;
+      document.getElementById('topAlbum').innerText = top;
+    }
+
+    async function searchDeezer() {
+      const query = document.getElementById('searchInput').value;
+      if (!query) return;
+      const response = await fetch(\`https://deezerdevs-deezer.p.rapidapi.com/search?q=\${encodeURIComponent(query)}\`, {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': 'demo',
+          'X-RapidAPI-Host': 'deezerdevs-deezer.p.rapidapi.com'
+        }
+      });
+      const data = await response.json();
+      const albumSelect = document.getElementById('albumSelect');
+      albumSelect.innerHTML = '<option value="">Select an album</option>';
+      const seen = new Set();
+      data.data.forEach(item => {
+        const album = item.album;
+        if (!seen.has(album.id)) {
+          seen.add(album.id);
+          const option = document.createElement('option');
+          option.value = album.id;
+          option.text = \`\${album.title} – \${item.artist.name}\`;
+          albumSelect.appendChild(option);
+        }
+      });
+    }
+
+    async function debouncedSuggestions() {
+      clearTimeout(debounceTimeout);
+      debounceTimeout = setTimeout(showSuggestions, 300);
+    }
+
+    async function showSuggestions() {
+      const query = document.getElementById('searchInput').value;
+      const suggestionsBox = document.getElementById('suggestions');
+      if (!query) return suggestionsBox.innerHTML = "";
+      const response = await fetch(\`https://deezerdevs-deezer.p.rapidapi.com/search?q=\${encodeURIComponent(query)}\`, {
+        method: 'GET',
+        headers: {
+          'X-RapidAPI-Key': 'demo',
+          'X-RapidAPI-Host': 'deezerdevs-deezer.p.rapidapi.com'
+        }
+      });
+      const data = await response.json();
+      suggestionsBox.innerHTML = "";
+      const seen = new Set();
+      data.data.slice(0, 10).forEach(item => {
+        const album = item.album;
+        const text = \`\${album.title} – \${item.artist.name}\`;
+        if (!seen.has(text)) {
+          seen.add(text);
+          const div = document.createElement('div');
+          div.className = 'suggestion-item';
+          div.innerText = text;
+          div.onclick = () => {
+            document.getElementById('searchInput').value = text;
+            suggestionsBox.innerHTML = "";
+            searchDeezer();
+          };
+          suggestionsBox.appendChild(div);
+        }
+      });
+    }
+
+    async function loadAlbumTracks() {
+      const albumId = document.getElementById('albumSelect').value;
+      if (!albumId) return;
+      const response = await fetch(\`https://api.deezer.com/album/\${albumId}?output=jsonp\`);
+      const jsonp = await response.text();
+      const json = JSON.parse(jsonp.replace(/^.*?\(/, '').replace(/\);?$/, ''));
+      document.getElementById('albumName').value = json.title;
+      document.getElementById('tracks').innerHTML = '<h3>Tracks</h3>';
+      json.tracks.data.forEach(track => addTrack(track.title, ""));
+    }
+  </script>
+</body>
+</html>
